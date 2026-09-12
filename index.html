@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Таймеры</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .timer-card {
+      background-color: #1e1e1e;
+      border: 1px solid #2d2d2d;
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .timer-card.active {
+      border-color: #bb86fc;
+    }
+    .timer-card.finished {
+      border-color: #cf6679;
+      animation: alertPulse 1s infinite alternate;
+    }
+    @keyframes alertPulse {
+      from { background-color: #1e1e1e; }
+      to { background-color: #381219; }
+    }
+    .timer-title {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #333;
+      color: #e0e0e0;
+      font-size: 16px;
+      padding: 6px;
+      outline: none;
+      width: 100%;
+    }
+    .timer-title:focus {
+      border-bottom-color: #bb86fc;
+    }
+    .timer-display {
+      font-size: 48px;
+      font-weight: 700;
+      text-align: center;
+      font-family: monospace;
+      letter-spacing: 2px;
+      color: #ffffff;
+      margin: 4px 0;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .time-input {
+      background-color: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 18px;
+      padding: 10px;
+      width: 100%;
+      text-align: center;
+      outline: none;
+    }
+    .time-input:focus {
+      border-color: #bb86fc;
+    }
+    .controls-row {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      min-height: 48px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+    .btn-start {
+      background-color: #03dac6;
+      color: #000000;
+    }
+    .btn-pause {
+      background-color: #cf6679;
+      color: #000000;
+    }
+    .btn-reset {
+      background-color: #333333;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container" id="app"></div>
+  <script>
+    const TIMER_COUNT = 7;
+    const app = document.getElementById('app');
+    const timers = [];
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      document.addEventListener('click', () => {
+        Notification.requestPermission();
+      }, { once: true });
+    }
+
+    for (let i = 0; i < TIMER_COUNT; i++) {
+      timers.push({
+        id: i,
+        name: `Таймер ${i + 1}`,
+        totalSeconds: 0,
+        remainingSeconds: 0,
+        interval: null,
+        isRunning: false,
+        targetTime: null
+      });
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function render() {
+      app.innerHTML = '';
+      timers.forEach((t) => {
+        const card = document.createElement('div');
+        card.className = `timer-card ${t.isRunning ? 'active' : ''}`;
+        card.id = `card-${t.id}`;
+
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'timer-title';
+        titleInput.value = t.name;
+        titleInput.placeholder = 'Название таймера';
+        titleInput.oninput = (e) => { t.name = e.target.value; };
+
+        const display = document.createElement('div');
+        display.className = 'timer-display';
+        display.id = `display-${t.id}`;
+        display.textContent = formatTime(t.remainingSeconds);
+
+        const inputRow = document.createElement('div');
+        inputRow.className = 'input-row';
+
+        const timeInput = document.createElement('input');
+        timeInput.type = 'number';
+        timeInput.className = 'time-input';
+        timeInput.placeholder = 'Минуты (например: 5)';
+        timeInput.min = '1';
+        timeInput.oninput = (e) => {
+          if (t.isRunning) return;
+          const mins = parseInt(e.target.value, 10);
+          if (!isNaN(mins) && mins > 0) {
+            t.totalSeconds = mins * 60;
+            t.remainingSeconds = t.totalSeconds;
+            display.textContent = formatTime(t.remainingSeconds);
+          } else if (e.target.value === '') {
+            t.totalSeconds = 0;
+            t.remainingSeconds = 0;
+            display.textContent = formatTime(0);
+          }
+        };
+
+        inputRow.appendChild(timeInput);
+
+        const controlsRow = document.createElement('div');
+        controlsRow.className = 'controls-row';
+
+        const startBtn = document.createElement('button');
+        startBtn.className = `btn ${t.isRunning ? 'btn-pause' : 'btn-start'}`;
+        startBtn.textContent = t.isRunning ? 'Пауза' : 'Старт';
+        startBtn.onclick = () => toggleTimer(t.id, timeInput);
+
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'btn btn-reset';
+        resetBtn.textContent = 'Сброс';
+        resetBtn.onclick = () => resetTimer(t.id, timeInput);
+
+        controlsRow.appendChild(startBtn);
+        controlsRow.appendChild(resetBtn);
+
+        card.appendChild(titleInput);
+        card.appendChild(display);
+        card.appendChild(inputRow);
+        card.appendChild(controlsRow);
+
+        app.appendChild(card);
+      });
+    }
+
+    function toggleTimer(id, inputElem) {
+      const t = timers[id];
+      if (t.isRunning) {
+        clearInterval(t.interval);
+        t.isRunning = false;
+        render();
+        return;
+      }
+
+      if (t.remainingSeconds <= 0 && inputElem && inputElem.value) {
+        const mins = parseInt(inputElem.value, 10);
+        if (!isNaN(mins) && mins > 0) {
+          t.totalSeconds = mins * 60;
+          t.remainingSeconds = t.totalSeconds;
+        }
+      }
+
+      if (t.remainingSeconds <= 0) return;
+
+      t.isRunning = true;
+      t.targetTime = Date.now() + t.remainingSeconds * 1000;
+
+      const cardElem = document.getElementById(`card-${t.id}`);
+      if (cardElem) cardElem.classList.remove('finished');
+
+      t.interval = setInterval(() => {
+        const now = Date.now();
+        const diff = Math.round((t.targetTime - now) / 1000);
+
+        if (diff <= 0) {
+          t.remainingSeconds = 0;
+          clearInterval(t.interval);
+          t.isRunning = false;
+
+          if ('vibrate' in navigator) {
+            navigator.vibrate([500, 200, 500, 200, 500]);
+          }
+
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(t.name || 'Таймер', {
+              body: 'Время вышло!',
+              tag: `timer-${t.id}`
+            });
+          }
+
+          const cElem = document.getElementById(`card-${t.id}`);
+          if (cElem) cElem.classList.add('finished');
+
+          render();
+        } else {
+          t.remainingSeconds = diff;
+          const displayElem = document.getElementById(`display-${t.id}`);
+          if (displayElem) displayElem.textContent = formatTime(t.remainingSeconds);
+        }
+      }, 250);
+
+      render();
+    }
+
+    function resetTimer(id, inputElem) {
+      const t = timers[id];
+      clearInterval(t.interval);
+      t.isRunning = false;
+      t.totalSeconds = 0;
+      t.remainingSeconds = 0;
+      if (inputElem) inputElem.value = '';
+
+      const cardElem = document.getElementById(`card-${t.id}`);
+      if (cardElem) cardElem.classList.remove('finished');
+
+      render();
+    }
+
+    render();
+  </script>
+</body>
+</html>
